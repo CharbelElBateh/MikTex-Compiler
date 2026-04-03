@@ -1,0 +1,23 @@
+[project]
+name = "miktex-compiler"
+version = "0.1.0"
+description = "A Python-based LaTeX IDE for MiKTeX"
+requires-python = ">=3.12"
+license = "GPL-3.0-or-later"
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "W"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests that require MiKTeX installation",
+]

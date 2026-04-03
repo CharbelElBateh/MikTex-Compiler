@@ -1,0 +1,99 @@
+{
+  "snippets": [
+    {
+      "trigger": "fig",
+      "label": "Figure environment",
+      "body": "\\begin{figure}[${1:htbp}]\n\t\\centering\n\t\\includegraphics[width=${2:0.8}\\textwidth]{${3:filename}}\n\t\\caption{${4:caption}}\n\t\\label{fig:${5:label}}\n\\end{figure}"
+    },
+    {
+      "trigger": "tab",
+      "label": "Table environment",
+      "body": "\\begin{table}[${1:htbp}]\n\t\\centering\n\t\\caption{${2:caption}}\n\t\\label{tab:${3:label}}\n\t\\begin{tabular}{${4:lcc}}\n\t\t\\toprule\n\t\t${5:Header 1} & ${6:Header 2} \\\\\\\\\n\t\t\\midrule\n\t\t$0 \\\\\\\\\n\t\t\\bottomrule\n\t\\end{tabular}\n\\end{table}"
+    },
+    {
+      "trigger": "eq",
+      "label": "Equation environment",
+      "body": "\\begin{equation}\n\t${1:equation}\n\t\\label{eq:${2:label}}\n\\end{equation}"
+    },
+    {
+      "trigger": "eqs",
+      "label": "Equation* (unnumbered)",
+      "body": "\\begin{equation*}\n\t${1:equation}\n\\end{equation*}"
+    },
+    {
+      "trigger": "ali",
+      "label": "Align environment",
+      "body": "\\begin{align}\n\t${1:lhs} &= ${2:rhs} \\label{eq:${3:label}}\n\\end{align}"
+    },
+    {
+      "trigger": "enum",
+      "label": "Enumerate list",
+      "body": "\\begin{enumerate}\n\t\\item ${1:first}\n\t\\item ${2:second}\n\\end{enumerate}"
+    },
+    {
+      "trigger": "item",
+      "label": "Itemize list",
+      "body": "\\begin{itemize}\n\t\\item ${1:first}\n\t\\item ${2:second}\n\\end{itemize}"
+    },
+    {
+      "trigger": "frame",
+      "label": "Beamer frame",
+      "body": "\\begin{frame}{${1:Title}}\n\t$0\n\\end{frame}"
+    },
+    {
+      "trigger": "cols",
+      "label": "Two-column layout",
+      "body": "\\begin{columns}\n\t\\begin{column}{0.5\\textwidth}\n\t\t${1:Left column}\n\t\\end{column}\n\t\\begin{column}{0.5\\textwidth}\n\t\t${2:Right column}\n\t\\end{column}\n\\end{columns}"
+    },
+    {
+      "trigger": "mini",
+      "label": "Minipage",
+      "body": "\\begin{minipage}{${1:0.45}\\textwidth}\n\t$0\n\\end{minipage}"
+    },
+    {
+      "trigger": "doc",
+      "label": "Basic document template",
+      "body": "\\documentclass{${1:article}}\n\\usepackage[utf8]{inputenc}\n\\usepackage{amsmath,amssymb}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\n\\title{${2:Title}}\n\\author{${3:Author}}\n\\date{\\today}\n\n\\begin{document}\n\\maketitle\n\n\\section{${4:Introduction}}\n$0\n\n\\end{document}"
+    },
+    {
+      "trigger": "bib",
+      "label": "BibLaTeX setup",
+      "body": "\\usepackage[backend=biber,style=${1:numeric}]{biblatex}\n\\addbibresource{${2:references.bib}}"
+    },
+    {
+      "trigger": "href",
+      "label": "Hyperlink",
+      "body": "\\href{${1:url}}{${2:text}}"
+    },
+    {
+      "trigger": "img",
+      "label": "Include graphics",
+      "body": "\\includegraphics[width=${1:0.8}\\textwidth]{${2:filename}}"
+    },
+    {
+      "trigger": "code",
+      "label": "Verbatim code block",
+      "body": "\\begin{verbatim}\n${1:code}\n\\end{verbatim}"
+    },
+    {
+      "trigger": "lst",
+      "label": "Listings code block",
+      "body": "\\begin{lstlisting}[language=${1:Python},caption=${2:caption}]\n${3:code}\n\\end{lstlisting}"
+    },
+    {
+      "trigger": "tikz",
+      "label": "TikZ picture",
+      "body": "\\begin{tikzpicture}\n\t$0\n\\end{tikzpicture}"
+    },
+    {
+      "trigger": "mat",
+      "label": "Matrix (bmatrix)",
+      "body": "\\begin{bmatrix}\n\t${1:a} & ${2:b} \\\\\\\\\n\t${3:c} & ${4:d}\n\\end{bmatrix}"
+    },
+    {
+      "trigger": "cases",
+      "label": "Piecewise function",
+      "body": "\\begin{cases}\n\t${1:expr1} & \\text{if } ${2:cond1} \\\\\\\\\n\t${3:expr2} & \\text{otherwise}\n\\end{cases}"
+    }
+  ]
+}

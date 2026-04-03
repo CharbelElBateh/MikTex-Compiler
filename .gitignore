@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Application
+*.log
+logs/
+
+# PyInstaller
+*.spec
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# MiKTeX project build outputs
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.lot
+*.out
+*.synctex.gz
+*.toc
+*.idx
+*.ilg
+*.ind
+
+.claude
+CLAUDE.md

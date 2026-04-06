@@ -1,5 +1,6 @@
 # MIKTEX-Compiler
 
+I hit my free-tier limit for compilations on overleaf. So I asked claude to create this.
 A Python-based LaTeX IDE built on top of MiKTeX, featuring a QScintilla editor, side-by-side PDF preview with SyncTeX, and integrated MiKTeX package management.
 
 ## Features
@@ -23,7 +24,7 @@ A Python-based LaTeX IDE built on top of MiKTeX, featuring a QScintilla editor, 
 ## Installation
 
 ```bash
-git clone https://github.com/<your-username>/MIKTEX-Compiler.git
+git clone https://github.com/CharbelElBateh/MIKTEX-Compiler.git
 cd MIKTEX-Compiler
 
 python -m venv .venv
@@ -113,5 +114,4 @@ mypy src/                         # Type check (strict)
 | tomli-w ≥ 1.0 | TOML project config serialization |
 
 ## License
-
-GPL-3.0-or-later — see [LICENSE](LICENSE).
+I dont care about licensing do whatever you want.

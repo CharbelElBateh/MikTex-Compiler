@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QRect, pyqtSignal
+from PyQt6.QtCore import Qt, QRect, QSize, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QLinearGradient, QPainter
 from PyQt6.QtWidgets import (
     QDialog,
@@ -132,21 +132,11 @@ class WelcomeDialog(QDialog):
 
         for path in recent_paths:
             item = QListWidgetItem()
-            # Two-line display: project name (bold) + path (muted)
-            item.setText(path.name)
+            # Two-line display: project name + full path
+            item.setText(f"{path.name}\n{path}")
             item.setToolTip(str(path))
             item.setData(Qt.ItemDataRole.UserRole, str(path))
-            item.setData(Qt.ItemDataRole.UserRole + 1, str(path))
-            self._recent_list.addItem(item)
-
-        # Overlay path as secondary text using a delegate-style trick with HTML in a label
-        # For simplicity, add path as part of item text using newline
-        self._recent_list.clear()
-        for path in recent_paths:
-            item = QListWidgetItem()
-            item.setText(f"{path.name}\n{path}")
-            item.setData(Qt.ItemDataRole.UserRole, str(path))
-            item.setSizeHint(item.sizeHint().__class__(0, 46))
+            item.setSizeHint(QSize(0, 46))
             self._recent_list.addItem(item)
 
         if not recent_paths:

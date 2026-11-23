@@ -66,10 +66,13 @@ class PDFNavigationBar(QWidget):
 
         self._zoom_combo = QComboBox()
         self._zoom_combo.setFixedWidth(90)
+        self._zoom_combo.setEditable(True)
+        self._zoom_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         for label, _ in self._ZOOM_PRESETS:
             self._zoom_combo.addItem(label)
         self._zoom_combo.setCurrentText("100%")
-        self._zoom_combo.currentIndexChanged.connect(self._on_zoom_preset)
+        self._zoom_combo.activated.connect(self._on_zoom_preset)
+        self._zoom_combo.lineEdit().editingFinished.connect(self._on_zoom_edited)
 
         self._zoom_in_btn = QPushButton("+")
         self._zoom_in_btn.setFixedWidth(28)
@@ -94,16 +97,9 @@ class PDFNavigationBar(QWidget):
 
     def set_zoom(self, zoom: float) -> None:
         self._current_zoom = zoom
-        # Try to match a preset label
         self._zoom_combo.blockSignals(True)
-        matched = False
-        for label, val in self._ZOOM_PRESETS:
-            if val > 0 and abs(val - zoom) < 0.01:
-                self._zoom_combo.setCurrentText(label)
-                matched = True
-                break
-        if not matched:
-            self._zoom_combo.setCurrentText(f"{int(zoom * 100)}%")
+        # An editable combo can display arbitrary values like "137%"
+        self._zoom_combo.setEditText(f"{round(zoom * 100)}%")
         self._zoom_combo.blockSignals(False)
 
     # ── Slots ──
@@ -127,7 +123,21 @@ class PDFNavigationBar(QWidget):
         _, val = self._ZOOM_PRESETS[idx]
         if val > 0:
             self._current_zoom = val
-            self.zoom_changed.emit(val)
+        # val < 0 means "Fit Width" — the viewer resolves it to a real zoom
+        self.zoom_changed.emit(val)
+
+    def _on_zoom_edited(self) -> None:
+        """Parse a manually typed zoom value like '137%' or '1.4'."""
+        text = self._zoom_combo.currentText().strip().rstrip("%")
+        try:
+            value = float(text)
+        except ValueError:
+            self.set_zoom(self._current_zoom)  # restore previous display
+            return
+        zoom = value / 100.0 if value > 10 else value
+        zoom = max(0.1, min(4.0, zoom))
+        self._current_zoom = zoom
+        self.zoom_changed.emit(zoom)
 
     def _on_zoom_in(self) -> None:
         new_zoom = min(4.0, self._current_zoom * 1.25)

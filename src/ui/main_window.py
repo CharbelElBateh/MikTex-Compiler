@@ -43,6 +43,7 @@ class MainWindow(QMainWindow):
         self._project_manager = project_manager
         self._session_manager = session_manager
         self._compilation_controller = compilation_controller
+        self._last_diagnostics: list = []
 
         self.setWindowTitle(APP_NAME)
         self.setMinimumSize(QSize(800, 600))
@@ -80,6 +81,14 @@ class MainWindow(QMainWindow):
         self._connect_event_bus()
         self._restore_window_state()
         self._status_bar.set_engine(self._settings.compiler_default_engine)
+
+        # Sync the engine combo (and menu checkmarks) with the saved setting
+        engine_map = {"pdflatex": "pdfLaTeX", "xelatex": "XeLaTeX", "lualatex": "LuaLaTeX"}
+        display = engine_map.get(self._settings.compiler_default_engine)
+        if display:
+            idx = self._toolbar.engine_combo.findText(display)
+            if idx >= 0:
+                self._toolbar.engine_combo.setCurrentIndex(idx)
 
         # Sync word-wrap menu checkmark with persisted setting
         if self._menu_builder.actions.get("toggle_word_wrap"):
@@ -139,6 +148,27 @@ class MainWindow(QMainWindow):
             actions["compile"].triggered.connect(self._on_compile)
         if actions.get("stop_compilation"):
             actions["stop_compilation"].triggered.connect(self._on_stop_compilation)
+            actions["stop_compilation"].setEnabled(False)
+        if actions.get("clean_build"):
+            actions["clean_build"].triggered.connect(self._on_clean_build)
+
+        # Build is unavailable without MiKTeX
+        if not self._compilation_controller:
+            for name in ("compile", "stop_compilation", "clean_build"):
+                if actions.get(name):
+                    actions[name].setEnabled(False)
+                    actions[name].setToolTip("MiKTeX not found — compilation disabled")
+            self._toolbar.engine_combo.setEnabled(False)
+
+        # Engine selection menu (radio-style, synced with the toolbar combo)
+        engine_display = {"engine_pdflatex": "pdfLaTeX",
+                          "engine_xelatex": "XeLaTeX",
+                          "engine_lualatex": "LuaLaTeX"}
+        for action_name, display in engine_display.items():
+            if actions.get(action_name):
+                actions[action_name].triggered.connect(
+                    lambda checked, d=display: self._on_engine_menu_selected(d)
+                )
 
         # View toggles
         if actions.get("toggle_file_tree"):
@@ -161,6 +191,8 @@ class MainWindow(QMainWindow):
         # Tools
         if actions.get("package_manager"):
             actions["package_manager"].triggered.connect(self._on_package_manager)
+        if actions.get("refresh_file_tree"):
+            actions["refresh_file_tree"].triggered.connect(self._file_tree.refresh)
         if actions.get("open_terminal"):
             actions["open_terminal"].triggered.connect(self._on_open_terminal)
 
@@ -190,6 +222,32 @@ class MainWindow(QMainWindow):
     def _connect_event_bus(self) -> None:
         event_bus.synctex_reverse.connect(self._on_jump_to_source)
         event_bus.project_opened.connect(self._on_project_opened)
+        event_bus.compilation_started.connect(self._on_compilation_started_ui)
+        event_bus.compilation_finished.connect(self._on_compilation_finished_ui)
+        event_bus.compilation_cancelled.connect(self._on_compilation_ended_ui)
+
+    # ── Compilation UI state ──
+
+    def _on_compilation_started_ui(self, engine: str) -> None:
+        self._set_build_actions_running(True)
+        self._tab_manager.clear_diagnostics()
+
+    def _on_compilation_finished_ui(self, success: bool, errors: list) -> None:
+        self._set_build_actions_running(False)
+        self._last_diagnostics = errors
+        self._tab_manager.apply_diagnostics(errors)
+
+    def _on_compilation_ended_ui(self) -> None:
+        self._set_build_actions_running(False)
+
+    def _set_build_actions_running(self, running: bool) -> None:
+        actions = self._menu_builder.actions
+        if actions.get("compile"):
+            actions["compile"].setEnabled(not running)
+        if actions.get("clean_build"):
+            actions["clean_build"].setEnabled(not running)
+        if actions.get("stop_compilation"):
+            actions["stop_compilation"].setEnabled(running)
 
     # ── Project actions ──
 
@@ -251,9 +309,9 @@ class MainWindow(QMainWindow):
         display = engine_map.get(project.engine, project.engine)
         idx = self._toolbar.engine_combo.findText(display)
         if idx >= 0:
-            self._toolbar.engine_combo.blockSignals(True)
+            # Let the change propagate to settings so compilation actually
+            # uses the project's engine, not a stale global default.
             self._toolbar.engine_combo.setCurrentIndex(idx)
-            self._toolbar.engine_combo.blockSignals(False)
         self._status_bar.set_engine(project.engine)
         # Open the main .tex file
         if project.main_tex_path.is_file():
@@ -298,9 +356,13 @@ class MainWindow(QMainWindow):
 
         # Default: open as text in editor
         editor = self._tab_manager.open_file(path)
-        if editor and self._compilation_controller:
-            if path.endswith(".tex") and not self._compilation_controller._main_tex:
-                self._compilation_controller.set_main_tex(Path(path))
+        if editor:
+            # Show any diagnostics from the last build in the new tab
+            if self._last_diagnostics:
+                self._tab_manager.apply_diagnostics(self._last_diagnostics)
+            if self._compilation_controller:
+                if path_lower.endswith(".tex") and not self._compilation_controller._main_tex:
+                    self._compilation_controller.set_main_tex(Path(path))
 
     def _on_new_file(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
@@ -326,7 +388,7 @@ class MainWindow(QMainWindow):
         tex_file = None
         if not self._compilation_controller._main_tex:
             editor = self._tab_manager.current_editor
-            if editor and editor.file_path.endswith(".tex"):
+            if editor and editor.file_path.lower().endswith(".tex"):
                 editor.save_file()
                 tex_file = Path(editor.file_path)
             else:
@@ -341,9 +403,39 @@ class MainWindow(QMainWindow):
         if self._compilation_controller:
             self._compilation_controller.stop()
 
+    # Build artifacts removed by Clean Build (the PDF is kept)
+    _CLEAN_SUFFIXES = (
+        ".aux", ".log", ".out", ".toc", ".lof", ".lot", ".bbl", ".blg",
+        ".bcf", ".run.xml", ".idx", ".ind", ".ilg", ".synctex", ".synctex.gz",
+        ".fls", ".fdb_latexmk", ".nav", ".snm", ".vrb", ".xdv",
+    )
+
+    def _on_clean_build(self) -> None:
+        if not self._compilation_controller:
+            return
+        main_tex = self._compilation_controller._main_tex
+        if not main_tex:
+            QMessageBox.information(self, "Clean Build", "No main .tex file set.")
+            return
+        output_dir = self._compilation_controller._output_dir or (main_tex.parent / "build")
+        removed = 0
+        if output_dir.is_dir():
+            for f in output_dir.iterdir():
+                if f.is_file() and f.name.lower().endswith(self._CLEAN_SUFFIXES):
+                    try:
+                        f.unlink()
+                        removed += 1
+                    except OSError as e:
+                        log.warning("Could not delete %s: %s", f, e)
+        self._tab_manager.clear_diagnostics()
+        self._last_diagnostics = []
+        self.statusBar().showMessage(
+            f"Clean Build: removed {removed} auxiliary file(s)", 4000
+        )
+
     def _on_forward_sync(self) -> None:
         editor = self._tab_manager.current_editor
-        if not editor or not editor.file_path.endswith(".tex"):
+        if not editor or not editor.file_path.lower().endswith(".tex"):
             return
         line, col = editor.getCursorPosition()
         event_bus.synctex_forward.emit(editor.file_path, line + 1, col + 1)
@@ -370,11 +462,21 @@ class MainWindow(QMainWindow):
         new_theme = self._theme_manager.toggle_theme()
         self._settings.theme = new_theme
 
+    def _on_engine_menu_selected(self, display_name: str) -> None:
+        idx = self._toolbar.engine_combo.findText(display_name)
+        if idx >= 0:
+            self._toolbar.engine_combo.setCurrentIndex(idx)
+
     def _on_engine_changed(self, display_name: str) -> None:
         mapping = {"pdfLaTeX": "pdflatex", "XeLaTeX": "xelatex", "LuaLaTeX": "lualatex"}
         engine = mapping.get(display_name, "pdflatex")
         self._settings.compiler_default_engine = engine
         self._status_bar.set_engine(engine)
+        # Keep the Build > Select Engine menu checkmarks in sync
+        actions = self._menu_builder.actions
+        for name in ("engine_pdflatex", "engine_xelatex", "engine_lualatex"):
+            if actions.get(name):
+                actions[name].setChecked(name == f"engine_{engine}")
 
     # ── Find / Replace / GoTo ──
 
@@ -432,10 +534,17 @@ class MainWindow(QMainWindow):
         dlg.exec()
 
     def _on_open_terminal(self) -> None:
+        import shutil
         import subprocess
         project = self._project_manager.current
         cwd = str(project.root_path) if project else "."
-        subprocess.Popen(["cmd.exe"], cwd=cwd, creationflags=subprocess.CREATE_NEW_CONSOLE)
+        # Prefer Windows Terminal, then PowerShell, then cmd
+        wt = shutil.which("wt")
+        if wt:
+            subprocess.Popen([wt, "-d", cwd])
+            return
+        shell = shutil.which("pwsh") or shutil.which("powershell") or "cmd.exe"
+        subprocess.Popen([shell], cwd=cwd, creationflags=subprocess.CREATE_NEW_CONSOLE)
 
     # ── Settings dialogs ──
 
@@ -520,10 +629,12 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._compilation_controller and self._compilation_controller.is_running:
             self._compilation_controller.stop()
+        # Save the session before closing tabs — close_all() empties the
+        # open-file list, so saving afterwards would persist an empty session.
+        self.save_session()
         if not self._tab_manager.close_all():
             event.ignore()
             return
-        self.save_session()
         log.info("Window closed")
         event.accept()
 

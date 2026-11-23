@@ -1,6 +1,7 @@
 """Compilation pipeline: defines the ordered steps to build a LaTeX document."""
 
-from dataclasses import dataclass, field
+import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from src.compiler.engine import Engine
@@ -16,6 +17,7 @@ class PipelineStep:
     cwd: Path
     stop_on_failure: bool = True
     optional: bool = False  # If True, skip when precondition not met
+    input_file: Path | None = None  # Precondition file for optional steps
 
 
 class CompilationPipeline:
@@ -30,6 +32,9 @@ class CompilationPipeline:
         bibliography_tool: str = "none",
         extra_args: list[str] | None = None,
         max_passes: int = 3,
+        synctex: bool = True,
+        pre_build: list[str] | None = None,
+        post_build: list[str] | None = None,
     ) -> None:
         self._engine = engine
         self._main_tex = main_tex
@@ -38,6 +43,9 @@ class CompilationPipeline:
         self._bibliography_tool = bibliography_tool
         self._extra_args = extra_args or []
         self._max_passes = max_passes
+        self._synctex = synctex
+        self._pre_build = pre_build or []
+        self._post_build = post_build or []
 
     def build_steps(self) -> list[PipelineStep]:
         """Return the ordered list of compilation steps."""
@@ -45,9 +53,12 @@ class CompilationPipeline:
         stem = self._main_tex.stem
         output_dir = self._output_dir
 
-        # Ensure output directory exists (created by first LaTeX pass if not)
+        default_args = list(self._engine.default_args)
+        if not self._synctex:
+            default_args = [a for a in default_args if not a.startswith("-synctex")]
+
         engine_args = (
-            self._engine.default_args
+            default_args
             + [f"-output-directory={output_dir}"]
             + self._extra_args
             + [str(self._main_tex.name)]
@@ -56,6 +67,14 @@ class CompilationPipeline:
         engine_cmd = [str(self._engine.executable)] + engine_args
 
         steps: list[PipelineStep] = []
+
+        # Pre-build hooks
+        for i, hook in enumerate(self._pre_build, 1):
+            steps.append(PipelineStep(
+                name=f"Pre-build hook {i}",
+                command=["cmd.exe", "/c", hook],
+                cwd=cwd,
+            ))
 
         # Pass 1
         steps.append(PipelineStep(
@@ -68,12 +87,16 @@ class CompilationPipeline:
         # Bibliography
         if self._bibliography_tool == "bibtex":
             bibtex = self._miktex_bin_dir / "bibtex.exe"
+            # Use a path relative to cwd — bibtex's output security can
+            # refuse absolute paths.
+            aux_stem = os.path.relpath(output_dir / stem, cwd)
             steps.append(PipelineStep(
                 name="BibTeX",
-                command=[str(bibtex), str(output_dir / stem)],
+                command=[str(bibtex), aux_stem],
                 cwd=cwd,
                 stop_on_failure=False,
                 optional=True,
+                input_file=output_dir / f"{stem}.aux",
             ))
         elif self._bibliography_tool == "biber":
             biber = self._miktex_bin_dir / "biber.exe"
@@ -84,6 +107,7 @@ class CompilationPipeline:
                 cwd=cwd,
                 stop_on_failure=False,
                 optional=True,
+                input_file=output_dir / f"{stem}.bcf",
             ))
 
         # MakeIndex (optional — only run if .idx file exists after pass 1)
@@ -94,6 +118,7 @@ class CompilationPipeline:
             cwd=cwd,
             stop_on_failure=False,
             optional=True,
+            input_file=output_dir / f"{stem}.idx",
         ))
 
         # Pass 2
@@ -114,7 +139,24 @@ class CompilationPipeline:
                 stop_on_failure=False,
             ))
 
+        # Post-build hooks
+        for i, hook in enumerate(self._post_build, 1):
+            steps.append(PipelineStep(
+                name=f"Post-build hook {i}",
+                command=["cmd.exe", "/c", hook],
+                cwd=cwd,
+                stop_on_failure=False,
+            ))
+
         return steps
+
+    @property
+    def main_tex(self) -> Path:
+        return self._main_tex
+
+    @property
+    def source_dir(self) -> Path:
+        return self._main_tex.parent
 
     @property
     def output_pdf(self) -> Path:

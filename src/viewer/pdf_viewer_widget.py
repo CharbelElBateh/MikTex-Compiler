@@ -23,11 +23,13 @@ class PDFViewerWidget(QWidget):
         self,
         synctex_bridge: SyncTeXBridge | None = None,
         dpi: int = DEFAULT_RENDER_DPI,
+        default_zoom: int = DEFAULT_ZOOM,
         parent=None,
     ) -> None:
         super().__init__(parent)
         self._synctex_bridge = synctex_bridge
         self._current_pdf: Path | None = None
+        self._default_zoom = default_zoom
 
         self._renderer = PDFRenderer(dpi=dpi)
         self._nav_bar = PDFNavigationBar()
@@ -72,9 +74,10 @@ class PDFViewerWidget(QWidget):
         """Open a PDF file and display it."""
         if self._renderer.open(path):
             self._current_pdf = path
-            self._page_view.render_all(DEFAULT_ZOOM / 100.0)
+            zoom = self._default_zoom / 100.0
+            self._page_view.render_all(zoom)
             self._nav_bar.set_page_count(self._renderer.page_count)
-            self._nav_bar.set_zoom(DEFAULT_ZOOM / 100.0)
+            self._nav_bar.set_zoom(zoom)
             self._nav_bar.setVisible(True)
             self._page_view.setVisible(True)
             self._placeholder.setVisible(False)
@@ -156,6 +159,17 @@ class PDFViewerWidget(QWidget):
         if result and result.file_path:
             event_bus.synctex_reverse.emit(result.file_path, result.line, result.column)
             log.debug("Reverse sync → %s:%d", result.file_path, result.line)
+
+    # ── Live settings ──
+
+    def set_default_zoom(self, zoom_percent: int) -> None:
+        self._default_zoom = zoom_percent
+
+    def set_dpi(self, dpi: int) -> None:
+        """Change render DPI and re-render the current document."""
+        self._renderer.set_dpi(dpi)
+        if self._current_pdf:
+            self._page_view.render_all(self._page_view.zoom)
 
     @property
     def current_pdf(self) -> Path | None:

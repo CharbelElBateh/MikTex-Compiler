@@ -61,6 +61,10 @@ class FileWatcher(QObject):
 
         self._pending_path: str = ""
 
+        # QTimer must be started from the Qt thread; watchdog callbacks arrive
+        # on the observer thread, so route them through a queued signal.
+        self.file_changed.connect(self._schedule_debounce)
+
     @property
     def available(self) -> bool:
         return _HAS_WATCHDOG
@@ -102,11 +106,13 @@ class FileWatcher(QObject):
             self._watched_path = None
 
     def _on_file_changed(self, path: str) -> None:
-        """Called from watchdog thread — schedules debounced signal via timer."""
-        self._pending_path = path
+        """Called from the watchdog thread — only emits a (queued) signal."""
         self.file_changed.emit(path)
+
+    def _schedule_debounce(self, path: str) -> None:
+        """Runs in the Qt thread; restarts the debounce countdown."""
+        self._pending_path = path
         if self._enabled:
-            # Reset debounce timer (called from non-Qt thread, but QTimer.start is thread-safe)
             self._debounce_timer.start()
 
     def _on_debounce_fire(self) -> None:

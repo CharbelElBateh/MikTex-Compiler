@@ -10,7 +10,7 @@ def main() -> int:
     parser.add_argument("file", nargs="?", help="File or project to open")
     args = parser.parse_args()
 
-    app = Application(verbose=args.verbose)
+    app = Application(verbose=args.verbose, open_target=args.file)
     return app.run()
 
 

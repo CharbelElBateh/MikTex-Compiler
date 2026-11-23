@@ -5,6 +5,7 @@ lines, file open/close is tracked via parentheses, and line numbers appear in
 different positions depending on the message type.
 """
 
+import os
 import re
 from pathlib import Path
 
@@ -26,7 +27,19 @@ _RE_OVERFULL = re.compile(
 _RE_PAREN_OPEN = re.compile(r"\(([^()]+\.(?:tex|sty|cls|def|clo|fd|cfg|ltx|dtx))", re.IGNORECASE)
 
 
-def _track_file_stack(line: str, file_stack: list[str]) -> None:
+def _resolve(candidate: str, base_dir: Path | None) -> str:
+    """Resolve a log file reference to an absolute path when possible.
+
+    LaTeX logs record paths relative to the compile working directory, so
+    anchor them to base_dir for the error list to be able to open them.
+    """
+    p = Path(candidate)
+    if base_dir and not p.is_absolute():
+        p = base_dir / p
+    return os.path.normpath(str(p))
+
+
+def _track_file_stack(line: str, file_stack: list[str], base_dir: Path | None) -> None:
     """Update the file stack by tracking parentheses that indicate file opens/closes."""
     # Count opens and closes in this line
     depth = 0
@@ -40,7 +53,7 @@ def _track_file_stack(line: str, file_stack: list[str]) -> None:
     for m in _RE_PAREN_OPEN.finditer(line):
         candidate = m.group(1).strip()
         if Path(candidate).suffix.lower() in {".tex", ".sty", ".cls", ".def", ".clo", ".fd"}:
-            file_stack.append(candidate)
+            file_stack.append(_resolve(candidate, base_dir))
             return
 
     # Closing parens
@@ -53,7 +66,12 @@ def _track_file_stack(line: str, file_stack: list[str]) -> None:
 class LogParser:
     """Parse a LaTeX .log file and return a list of CompilationError."""
 
-    def parse(self, log_path: Path) -> list[CompilationError]:
+    def parse(
+        self,
+        log_path: Path,
+        base_dir: Path | None = None,
+        root_file: Path | None = None,
+    ) -> list[CompilationError]:
         if not log_path.is_file():
             log.debug("Log file not found: %s", log_path)
             return []
@@ -66,14 +84,15 @@ class LogParser:
 
         lines = text.splitlines()
         results: list[CompilationError] = []
-        file_stack: list[str] = [str(log_path.parent)]  # root file dir as base
+        # Attribute errors to the main document until another file opens
+        file_stack: list[str] = [str(root_file) if root_file else str(log_path.parent)]
 
         i = 0
         while i < len(lines):
             line = lines[i]
 
             # Track file context via parentheses
-            _track_file_stack(line, file_stack)
+            _track_file_stack(line, file_stack, base_dir)
             current_file = file_stack[-1] if file_stack else ""
 
             # ── Errors (start with "! ") ──

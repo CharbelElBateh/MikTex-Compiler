@@ -33,6 +33,11 @@ class CompilationController:
         self._main_tex: Path | None = None
         self._output_dir: Path | None = None
         self._bibliography_tool: str = "none"
+        self._extra_args: list[str] = []
+        self._max_passes: int = 3
+        self._synctex: bool = True
+        self._pre_build: list[str] = []
+        self._post_build: list[str] = []
 
         event_bus.project_opened.connect(self._on_project_opened)
         event_bus.project_closed.connect(self._on_project_closed)
@@ -69,6 +74,11 @@ class CompilationController:
             output_dir=output_dir,
             miktex_bin_dir=self._settings.miktex_bin_dir,
             bibliography_tool=self._bibliography_tool,
+            extra_args=self._extra_args,
+            max_passes=self._max_passes,
+            synctex=self._synctex,
+            pre_build=self._pre_build,
+            post_build=self._post_build,
         )
 
         self._worker = CompilerWorker(self._current_pipeline, self._settings.miktex_bin_dir)
@@ -109,6 +119,11 @@ class CompilationController:
         main_file = getattr(project, "main_file", "")
         output_dir_name = getattr(project, "output_directory", "build")
         self._bibliography_tool = getattr(project, "bibliography_tool", "none")
+        self._extra_args = list(getattr(project, "extra_args", []) or [])
+        self._max_passes = int(getattr(project, "max_passes", 3) or 3)
+        self._synctex = bool(getattr(project, "synctex", True))
+        self._pre_build = list(getattr(project, "pre_build", []) or [])
+        self._post_build = list(getattr(project, "post_build", []) or [])
 
         if root and main_file:
             self._main_tex = root / main_file
@@ -118,3 +133,8 @@ class CompilationController:
         self._main_tex = None
         self._output_dir = None
         self._bibliography_tool = "none"
+        self._extra_args = []
+        self._max_passes = 3
+        self._synctex = True
+        self._pre_build = []
+        self._post_build = []

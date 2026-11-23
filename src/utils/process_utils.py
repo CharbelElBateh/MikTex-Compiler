@@ -8,21 +8,18 @@ log = get_logger("utils.process")
 
 
 def build_clean_env(miktex_bin_dir: Path) -> dict[str, str]:
-    """Build a clean environment for MiKTeX subprocess calls.
+    """Build an environment for MiKTeX subprocess calls.
 
-    Strips potentially problematic PATH entries and ensures MiKTeX bin
-    directory is included along with essential Windows system paths.
+    Prepends the MiKTeX bin directory so it takes precedence over any other
+    TeX distribution on PATH, while keeping the rest of the user's PATH so
+    build hooks and tool sub-invocations still resolve.
     """
     env = os.environ.copy()
 
-    system_root = os.environ.get("SystemRoot", r"C:\Windows")
-    clean_path_parts = [
-        str(miktex_bin_dir),
-        os.path.join(system_root, "system32"),
-        system_root,
-        os.path.join(system_root, "System32", "Wbem"),
-    ]
-    env["PATH"] = os.pathsep.join(clean_path_parts)
+    existing_path = env.get("PATH", "")
+    env["PATH"] = os.pathsep.join(
+        [str(miktex_bin_dir)] + ([existing_path] if existing_path else [])
+    )
 
     return env
 
@@ -47,6 +44,8 @@ def run_miktex_command(
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=timeout,
         creationflags=subprocess.CREATE_NO_WINDOW,
     )
@@ -72,5 +71,7 @@ def start_miktex_process(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         creationflags=subprocess.CREATE_NO_WINDOW,
     )

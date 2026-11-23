@@ -61,7 +61,11 @@ class CompilerWorker(QThread):
                     break
 
         # Parse log file for structured errors
-        errors = LogParser().parse(self._pipeline.output_log)
+        errors = LogParser().parse(
+            self._pipeline.output_log,
+            base_dir=self._pipeline.source_dir,
+            root_file=self._pipeline.main_tex,
+        )
         has_errors = any(e.level == "error" for e in errors)
         pdf_exists = self._pipeline.output_pdf.is_file()
         success = not has_errors and pdf_exists
@@ -82,6 +86,8 @@ class CompilerWorker(QThread):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 creationflags=subprocess.CREATE_NO_WINDOW,
             )
             for line in self._current_process.stdout:
@@ -103,19 +109,15 @@ class CompilerWorker(QThread):
             self._current_process = None
 
     def _optional_input_exists(self, step: PipelineStep) -> bool:
-        """Check if the input file for an optional step exists (e.g., .idx for makeindex)."""
-        # The last argument of optional steps is typically the input file
-        if not step.command:
+        """Check if the precondition file for an optional step exists."""
+        if step.input_file is None:
+            return True
+        if not step.input_file.is_file():
             return False
-        candidate = Path(step.command[-1])
-        # For makeindex: check .idx; for bibtex/biber: check .aux
-        if "makeindex" in step.command[0]:
-            return candidate.with_suffix(".idx").is_file()
-        if "bibtex" in step.command[0] or "biber" in step.command[0]:
-            # Check for \bibliography in aux file
-            aux = candidate.with_suffix(".aux")
-            if aux.is_file():
-                return "\\bibdata" in aux.read_text(encoding="utf-8", errors="replace")
+        if step.input_file.suffix == ".aux":
+            # BibTeX only has work when the aux file references a bibliography
+            text = step.input_file.read_text(encoding="utf-8", errors="replace")
+            return "\\bibdata" in text
         return True
 
     def cancel(self) -> None:

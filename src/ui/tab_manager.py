@@ -38,7 +38,8 @@ _CLOSE_BTN_SS = {
 
 
 def _norm(path: str) -> str:
-    return os.path.normpath(path)
+    # abspath so relative and absolute references to the same file share a tab
+    return os.path.normpath(os.path.abspath(path))
 
 
 class TabManager(QTabWidget):
@@ -68,8 +69,20 @@ class TabManager(QTabWidget):
 
         self.currentChanged.connect(self._on_current_changed)
 
+        # Middle-click closes a tab (standard tabbed-UI behavior)
+        self.tabBar().installEventFilter(self)
+
         event_bus.file_modified.connect(self._on_file_modified)
         event_bus.theme_changed.connect(self._on_theme_changed)
+
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802
+        if obj is self.tabBar() and event.type() == event.Type.MouseButtonRelease:
+            if event.button() == Qt.MouseButton.MiddleButton:
+                idx = self.tabBar().tabAt(event.position().toPoint())
+                if idx >= 0:
+                    self._close_widget(self.widget(idx))
+                    return True
+        return super().eventFilter(obj, event)
 
     # ── Tab management helpers ────────────────────────────────────────────────
 
@@ -125,6 +138,7 @@ class TabManager(QTabWidget):
             font_size=self._settings.editor_font_size,
             tab_width=self._settings.editor_tab_width,
             word_wrap=self._settings.editor_word_wrap,
+            show_whitespace=self._settings.editor_show_whitespace,
         )
 
         if not editor.load_file():
@@ -218,8 +232,11 @@ class TabManager(QTabWidget):
         return success
 
     def save_all(self) -> None:
+        # Only write modified files — unconditional writes retrigger the
+        # auto-compile file watcher and cause an endless compile loop.
         for editor in self._open_files.values():
-            editor.save_file()
+            if editor.is_modified:
+                editor.save_file()
 
     def close_current(self) -> bool:
         widget = self.currentWidget()
@@ -251,6 +268,40 @@ class TabManager(QTabWidget):
         """Apply word wrap to all open editors."""
         for editor in self._open_files.values():
             editor.set_word_wrap(enabled)
+
+    # ── Live settings / diagnostics ──────────────────────────────────────────
+
+    def apply_editor_settings(self) -> None:
+        """Re-apply current editor settings to all open editors."""
+        s = self._settings
+        colors = self._theme_manager.editor_colors
+        for editor in self._open_files.values():
+            editor.apply_settings(
+                colors,
+                s.editor_font_family,
+                s.editor_font_size,
+                s.editor_tab_width,
+                s.editor_word_wrap,
+                s.editor_show_whitespace,
+            )
+
+    def apply_diagnostics(self, errors: list) -> None:
+        """Show error/warning margin markers from compilation results."""
+        by_file: dict[str, list[tuple[int, str]]] = {}
+        for err in errors:
+            path = getattr(err, "file_path", "")
+            line = getattr(err, "line", -1)
+            level = getattr(err, "level", "")
+            if not path or line < 1 or level not in ("error", "warning"):
+                continue
+            by_file.setdefault(_norm(path), []).append((line, level))
+
+        for key, editor in self._open_files.items():
+            editor.set_diagnostics(by_file.get(key, []))
+
+    def clear_diagnostics(self) -> None:
+        for editor in self._open_files.values():
+            editor.clear_diagnostics()
 
     # ── Properties ────────────────────────────────────────────────────────────
 

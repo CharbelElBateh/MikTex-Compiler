@@ -121,7 +121,7 @@ class FileTreeWidget(QWidget):
         for col in range(1, 4):
             self._tree.setColumnHidden(col, True)
 
-        self._tree.doubleClicked.connect(self._on_activated)
+        # clicked covers single-click opens; activated covers Enter/double-click
         self._tree.activated.connect(self._on_activated)
         self._tree.clicked.connect(self._on_clicked)
         self._tree.customContextMenuRequested.connect(self._on_context_menu)
@@ -147,6 +147,11 @@ class FileTreeWidget(QWidget):
     def clear(self) -> None:
         self._root_path = None
         self._model.setRootPath("")
+
+    def refresh(self) -> None:
+        """Force the model to re-read the watched directory."""
+        if self._root_path:
+            self.set_root(self._root_path)
 
     def _build_name_filters(self) -> list[str]:
         filters = []

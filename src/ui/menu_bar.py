@@ -1,4 +1,4 @@
-from PyQt6.QtGui import QAction, QKeySequence
+from PyQt6.QtGui import QAction, QActionGroup, QKeySequence
 from PyQt6.QtWidgets import QMenuBar
 
 
@@ -83,13 +83,15 @@ class MenuBarBuilder:
         menu.addSeparator()
 
         engine_menu = menu.addMenu("Select &Engine")
+        engine_group = QActionGroup(self._window)
+        engine_group.setExclusive(True)
         self.actions["engine_pdflatex"] = QAction("pdfLaTeX", self._window, checkable=True)
         self.actions["engine_xelatex"] = QAction("XeLaTeX", self._window, checkable=True)
         self.actions["engine_lualatex"] = QAction("LuaLaTeX", self._window, checkable=True)
         self.actions["engine_pdflatex"].setChecked(True)
-        engine_menu.addAction(self.actions["engine_pdflatex"])
-        engine_menu.addAction(self.actions["engine_xelatex"])
-        engine_menu.addAction(self.actions["engine_lualatex"])
+        for name in ("engine_pdflatex", "engine_xelatex", "engine_lualatex"):
+            engine_group.addAction(self.actions[name])
+            engine_menu.addAction(self.actions[name])
 
     def _build_view_menu(self) -> None:
         menu = self._menu_bar.addMenu("&View")

@@ -39,6 +39,7 @@ class LaTeXEditor(QsciScintilla):
         font_size: int = DEFAULT_FONT_SIZE,
         tab_width: int = 4,
         word_wrap: bool = False,
+        show_whitespace: bool = False,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -49,8 +50,10 @@ class LaTeXEditor(QsciScintilla):
         font = _resolve_font(font_family, font_size)
         self._setup_lexer(colors, font)
         self._setup_editor(font, tab_width, colors)
+        self._setup_markers(colors)
         if word_wrap:
             self.set_word_wrap(True)
+        self.set_show_whitespace(show_whitespace)
         self._connect_signals()
 
         # Autocompletion
@@ -78,9 +81,9 @@ class LaTeXEditor(QsciScintilla):
         self.setAutoIndent(True)
         self.setIndentationGuides(True)
 
-        # Line numbers margin
+        # Line numbers margin (width adapts to the line count)
         self.setMarginType(0, QsciScintilla.MarginType.NumberMargin)
-        self.setMarginWidth(0, "0000")
+        self._update_line_margin_width()
         self.setMarginsForegroundColor(QColor(colors.get("margin_fg", "#858585")))
         self.setMarginsBackgroundColor(QColor(colors.get("margin_bg", "#1e1e1e")))
         self.setMarginsFont(font)
@@ -125,10 +128,43 @@ class LaTeXEditor(QsciScintilla):
         # Enable UTF-8
         self.setUtf8(True)
 
+    _MARKER_ERROR = 1
+    _MARKER_WARNING = 2
+
+    def _setup_markers(self, colors: dict[str, str]) -> None:
+        """Define margin markers used to flag compile errors/warnings."""
+        self.markerDefine(QsciScintilla.MarkerSymbol.Circle, self._MARKER_ERROR)
+        self.setMarkerBackgroundColor(QColor("#e05252"), self._MARKER_ERROR)
+        self.setMarkerForegroundColor(QColor("#e05252"), self._MARKER_ERROR)
+        self.markerDefine(QsciScintilla.MarkerSymbol.Circle, self._MARKER_WARNING)
+        self.setMarkerBackgroundColor(QColor("#d8a83c"), self._MARKER_WARNING)
+        self.setMarkerForegroundColor(QColor("#d8a83c"), self._MARKER_WARNING)
+        # Margin 1 shows these markers
+        self.setMarginMarkerMask(1, (1 << self._MARKER_ERROR) | (1 << self._MARKER_WARNING))
+
+    def set_diagnostics(self, diagnostics: list[tuple[int, str]]) -> None:
+        """Mark (line_1based, level) diagnostics in the margin."""
+        self.clear_diagnostics()
+        for line, level in diagnostics:
+            if line < 1 or line > self.lines():
+                continue
+            marker = self._MARKER_ERROR if level == "error" else self._MARKER_WARNING
+            self.markerAdd(line - 1, marker)
+
+    def clear_diagnostics(self) -> None:
+        self.markerDeleteAll(self._MARKER_ERROR)
+        self.markerDeleteAll(self._MARKER_WARNING)
+
+    def _update_line_margin_width(self) -> None:
+        # One digit of headroom so the margin doesn't jump on every new line
+        digits = max(3, len(str(max(1, self.lines()))))
+        self.setMarginWidth(0, "0" * (digits + 1))
+
     def _connect_signals(self) -> None:
         self.modificationChanged.connect(self._on_modification_changed)
         self.cursorPositionChanged.connect(self._on_cursor_changed)
         self.textChanged.connect(self._on_text_changed)
+        self.linesChanged.connect(self._update_line_margin_width)
 
     def _on_modification_changed(self, modified: bool) -> None:
         if modified != self._is_modified:
@@ -192,6 +228,30 @@ class LaTeXEditor(QsciScintilla):
     @property
     def is_modified(self) -> bool:
         return self._is_modified
+
+    # ── Live settings ──
+
+    def set_show_whitespace(self, enabled: bool) -> None:
+        self.setWhitespaceVisibility(
+            QsciScintilla.WhitespaceVisibility.WsVisible
+            if enabled
+            else QsciScintilla.WhitespaceVisibility.WsInvisible
+        )
+
+    def apply_settings(
+        self,
+        colors: dict[str, str],
+        font_family: str,
+        font_size: int,
+        tab_width: int,
+        word_wrap: bool,
+        show_whitespace: bool,
+    ) -> None:
+        """Re-apply editor settings after they change in Preferences."""
+        self.apply_colors(colors, font_family, font_size)
+        self.setTabWidth(tab_width)
+        self.set_word_wrap(word_wrap)
+        self.set_show_whitespace(show_whitespace)
 
     # ── Word wrap ──
 

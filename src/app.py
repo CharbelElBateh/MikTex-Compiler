@@ -19,10 +19,13 @@ log = get_logger("app")
 class Application:
     """Application bootstrap and lifecycle management."""
 
-    def __init__(self, verbose: bool = False) -> None:
+    def __init__(self, verbose: bool = False, open_target: str | None = None) -> None:
         # 1. Logging
         setup_logging(verbose=verbose)
         log.info("Starting %s v%s", APP_NAME, APP_VERSION)
+
+        # File or project directory passed on the command line
+        self._open_target = Path(open_target).resolve() if open_target else None
 
         # 2. QApplication
         self._qapp = QApplication.instance() or QApplication(sys.argv)
@@ -74,6 +77,7 @@ class Application:
             self._pdf_viewer = PDFViewerWidget(
                 synctex_bridge=self._synctex_bridge,
                 dpi=self._settings.viewer_render_dpi,
+                default_zoom=self._settings.viewer_default_zoom,
             )
 
         # 8. Main window
@@ -114,8 +118,6 @@ class Application:
 
     def _populate_recent_menu(self) -> None:
         """Rebuild the Open Recent submenu from recent project list."""
-        recent_menu = self._main_window.menu_actions.get("open_recent_menu")
-        # Access menu via toolbar's parent menu builder
         menu = self._main_window._menu_builder.recent_menu
         menu.clear()
 
@@ -155,6 +157,24 @@ class Application:
     def _on_settings_changed(self, section: str, key: str, value) -> None:
         if section == "Compiler" and key == "auto_compile_on_save":
             self._file_watcher.enabled = bool(value)
+        elif section == "Editor":
+            # Apply font/tab/wrap/whitespace changes to open editors immediately
+            self._main_window.tab_manager.apply_editor_settings()
+        elif section == "Viewer" and self._pdf_viewer:
+            if key == "render_dpi":
+                self._pdf_viewer.set_dpi(self._settings.viewer_render_dpi)
+            elif key == "default_zoom":
+                self._pdf_viewer.set_default_zoom(self._settings.viewer_default_zoom)
+        elif section == "MiKTeX" and key == "bin_directory":
+            if not self._compilation_controller:
+                from src.utils.path_utils import find_miktex_bin_dir
+                if find_miktex_bin_dir(Path(str(value))):
+                    QMessageBox.information(
+                        self._main_window,
+                        "MiKTeX Found",
+                        "MiKTeX detected at the new location.\n\n"
+                        "Restart the application to enable compilation features.",
+                    )
 
     def _restore_session(self) -> None:
         """Restore the last session or show the welcome dialog."""
@@ -180,7 +200,7 @@ class Application:
 
             # Restore active tab
             idx = self._session_manager.active_tab_index()
-            if idx < self._main_window.tab_manager.count():
+            if 0 <= idx < self._main_window.tab_manager.count():
                 self._main_window.tab_manager.setCurrentIndex(idx)
 
             # Restore last open PDF in the viewer
@@ -189,6 +209,22 @@ class Application:
                 self._pdf_viewer.open_pdf(Path(last_pdf))
         else:
             self._show_welcome_dialog()
+
+    def _open_startup_target(self, target: Path) -> None:
+        """Open the file or project directory passed on the command line."""
+        from src.core.exceptions import ProjectError
+
+        if target.is_dir():
+            try:
+                self._project_manager.open(target)
+            except ProjectError as e:
+                QMessageBox.warning(self._main_window, "Open Project", str(e))
+        elif target.is_file():
+            self._main_window._open_file(str(target))
+        else:
+            QMessageBox.warning(
+                self._main_window, "Open", f"Path not found: {target}"
+            )
 
     def _show_welcome_dialog(self) -> None:
         from src.ui.dialogs.welcome_dialog import WelcomeDialog
@@ -213,6 +249,9 @@ class Application:
             QMessageBox.warning(self._main_window, "Open Project", str(e))
 
     def run(self) -> int:
+        self._main_window.show()
+        log.info("Application ready")
+
         if not self._miktex_bin_dir:
             QMessageBox.warning(
                 self._main_window,
@@ -222,11 +261,12 @@ class Application:
                 "Please configure the MiKTeX path in Settings > Preferences.",
             )
 
-        self._main_window.show()
-        log.info("Application ready")
-
-        # Session restore happens after show() so geometry is applied correctly
-        self._restore_session()
+        # An explicit command-line target takes precedence over session restore
+        if self._open_target:
+            self._open_startup_target(self._open_target)
+        else:
+            # Session restore happens after show() so geometry is applied correctly
+            self._restore_session()
 
         exit_code = self._qapp.exec()
 

@@ -2,12 +2,14 @@
 
 from pathlib import Path
 
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
+    QFontComboBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -62,7 +64,9 @@ class SettingsDialog(QDialog):
         tab = QWidget()
         form = QFormLayout(tab)
 
-        self._font_family = QLineEdit(self._settings.editor_font_family)
+        self._font_family = QFontComboBox()
+        self._font_family.setFontFilters(QFontComboBox.FontFilter.MonospacedFonts)
+        self._font_family.setCurrentFont(QFont(self._settings.editor_font_family))
         form.addRow("Font Family:", self._font_family)
 
         self._font_size = QSpinBox()
@@ -149,6 +153,10 @@ class SettingsDialog(QDialog):
         self._miktex_status = QLabel(f"Status: {status}")
         form.addRow("", self._miktex_status)
 
+        note = QLabel("Changing the MiKTeX path takes effect after a restart.")
+        note.setStyleSheet("color: #888888; font-size: 11px;")
+        form.addRow("", note)
+
         layout.addWidget(group)
         layout.addStretch()
 
@@ -165,7 +173,7 @@ class SettingsDialog(QDialog):
 
     def _apply(self) -> None:
         s = self._settings
-        s.editor_font_family = self._font_family.text().strip()
+        s.editor_font_family = self._font_family.currentFont().family()
         s.editor_font_size = self._font_size.value()
         s.editor_tab_width = self._tab_width.value()
         s.editor_word_wrap = self._word_wrap.isChecked()
